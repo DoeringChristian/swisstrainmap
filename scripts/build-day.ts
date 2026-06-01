@@ -20,7 +20,6 @@ const ROOT = resolve(__dirname, '..');
 const CACHE_DIR = resolve(ROOT, '.cache');
 const OUT = resolve(ROOT, 'public', 'day.json');
 
-const DEFAULT_DATE = '2026-05-28';
 const ISTDATEN_DATASET_URL =
   'https://data.opentransportdata.swiss/dataset/istdaten';
 const STATIONS_URL =
@@ -82,8 +81,11 @@ async function download(url: string, dest: string): Promise<void> {
   await pipeline(Readable.fromWeb(res.body as never), createWriteStream(dest));
 }
 
-async function findIstdatenUrl(date: string): Promise<string> {
-  console.log(`Looking up Ist-Daten resource URL for ${date}…`);
+/**
+ * Fetches the dataset index page and returns every (date, url) currently
+ * listed there, newest first.
+ */
+async function listIstdatenLinks(): Promise<{ date: string; url: string }[]> {
   const res = await fetch(ISTDATEN_DATASET_URL, {
     headers: { 'User-Agent': 'Mozilla/5.0 swiss-train-delay-map prep-script' },
   });
@@ -91,18 +93,44 @@ async function findIstdatenUrl(date: string): Promise<string> {
     throw new Error(`HTTP ${res.status} fetching ${ISTDATEN_DATASET_URL}`);
   }
   const html = await res.text();
-  const pattern = new RegExp(
-    `https://data\\.opentransportdata\\.swiss/dataset/[^"]+/download/${date}_istdaten\\.csv`,
-    'i',
-  );
-  const match = html.match(pattern);
-  if (!match) {
+  const re =
+    /https:\/\/data\.opentransportdata\.swiss\/dataset\/[^"]+\/download\/(\d{4}-\d{2}-\d{2})_istdaten\.csv/gi;
+  const seen = new Map<string, string>();
+  for (const m of html.matchAll(re)) {
+    if (!seen.has(m[1])) seen.set(m[1], m[0]);
+  }
+  return [...seen.entries()]
+    .map(([date, url]) => ({ date, url }))
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
+}
+
+async function findIstdatenUrl(date: string): Promise<string> {
+  console.log(`Looking up Ist-Daten resource URL for ${date}…`);
+  const links = await listIstdatenLinks();
+  const hit = links.find((l) => l.date === date);
+  if (!hit) {
+    const available = links
+      .slice(0, 5)
+      .map((l) => l.date)
+      .join(', ');
     throw new Error(
       `Could not find a CSV link for ${date} on the dataset page. ` +
-        `Try passing the URL as the second argument.`,
+        `Most recent available: ${available}. ` +
+        `Pass an available date or the URL as arguments.`,
     );
   }
-  return match[0];
+  return hit.url;
+}
+
+/** Resolves the most recent date that's currently published in the archive. */
+async function findLatestDate(): Promise<{ date: string; url: string }> {
+  console.log(`Looking up most recent Ist-Daten date…`);
+  const links = await listIstdatenLinks();
+  if (links.length === 0) {
+    throw new Error('No Ist-Daten CSV links found on the dataset page.');
+  }
+  console.log(`  Latest available: ${links[0].date}`);
+  return links[0];
 }
 
 async function loadStations(): Promise<Map<number, [number, number]>> {
@@ -268,7 +296,17 @@ async function buildDay(date: string, urlOverride?: string) {
 }
 
 const [, , dateArg, urlArg] = process.argv;
-buildDay(dateArg ?? DEFAULT_DATE, urlArg).catch((err) => {
+
+async function main() {
+  if (dateArg) {
+    await buildDay(dateArg, urlArg);
+  } else {
+    const latest = await findLatestDate();
+    await buildDay(latest.date, latest.url);
+  }
+}
+
+main().catch((err) => {
   console.error(err);
   process.exit(1);
 });

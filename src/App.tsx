@@ -15,7 +15,7 @@ export function App() {
   const [speed, setSpeed] = useState(30);
 
   useEffect(() => {
-    fetch('/day.json')
+    fetch(`${import.meta.env.BASE_URL}day.json`)
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
