@@ -1,0 +1,145 @@
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui,
+    sans-serif;
+  color-scheme: dark;
+  color: #eee;
+  background: #111;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+
+.app {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.map {
+  position: absolute;
+  inset: 0;
+}
+
+.panel {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 10;
+  padding: 14px 16px;
+  background: rgba(20, 20, 20, 0.88);
+  border: 1px solid #333;
+  border-radius: 8px;
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  backdrop-filter: blur(6px);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.panel h1 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.panel .row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.panel .row label {
+  flex: 0 0 80px;
+  color: #aaa;
+}
+
+.panel .row .value {
+  flex: 0 0 60px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.panel input[type='range'] {
+  flex: 1;
+}
+
+.panel button.play {
+  flex: 0 0 36px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid #444;
+  background: #1a1a1a;
+  color: #eee;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.panel button.play:hover {
+  background: #262626;
+  border-color: #666;
+}
+
+.panel input[type='number'] {
+  width: 70px;
+  padding: 4px 6px;
+  border: 1px solid #444;
+  background: #1a1a1a;
+  color: #eee;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.panel .stat {
+  margin-top: 8px;
+  color: #888;
+  font-size: 12px;
+}
+
+.legend {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  z-index: 10;
+  padding: 8px 12px;
+  background: rgba(20, 20, 20, 0.88);
+  border: 1px solid #333;
+  border-radius: 8px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.legend .bar {
+  width: 160px;
+  height: 10px;
+  border-radius: 5px;
+  background: linear-gradient(
+    to right,
+    rgb(60, 200, 120),
+    rgb(240, 200, 80),
+    rgb(220, 60, 60)
+  );
+}
+
+.loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #aaa;
+  font-size: 14px;
+}

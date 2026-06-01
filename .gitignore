@@ -1,0 +1,9 @@
+node_modules
+dist
+.npm-cache
+.cache
+public/day.json
+scripts/.cache
+*.log
+*.tsbuildinfo
+.DS_Store
