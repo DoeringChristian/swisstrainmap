@@ -8,10 +8,11 @@
  *   npm run build-day -- 2026-05-15     # specific date
  *   npm run build-day -- 2026-05-15 https://.../2026-05-15_istdaten.csv
  */
-import { createWriteStream, existsSync, mkdirSync } from 'node:fs';
+import { createReadStream, createWriteStream, existsSync, mkdirSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
+import { createInterface } from 'node:readline';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -172,26 +173,26 @@ async function buildDay(date: string, urlOverride?: string) {
   const stations = await loadStations();
 
   console.log('Parsing CSV…');
-  const csv = await readFile(csvCache, 'utf8');
-  const lines = csv.split('\n');
-  const header = lines[0].split(';');
-  const col = (name: string) => {
-    const i = header.indexOf(name);
-    if (i < 0) throw new Error(`Missing column ${name} in header`);
-    return i;
-  };
-  const iDay = col('BETRIEBSTAG');
-  const iId = col('FAHRT_BEZEICHNER');
-  const iProd = col('PRODUKT_ID');
-  const iLine = col('LINIEN_TEXT');
-  const iCancel = col('FAELLT_AUS_TF');
-  const iBpuic = col('BPUIC');
-  const iSchedArr = col('ANKUNFTSZEIT');
-  const iActArr = col('AN_PROGNOSE');
-  const iActArrStatus = col('AN_PROGNOSE_STATUS');
-  const iSchedDep = col('ABFAHRTSZEIT');
-  const iActDep = col('AB_PROGNOSE');
-  const iActDepStatus = col('AB_PROGNOSE_STATUS');
+  // The CSV is large enough (~230 MB) that readFile('utf8') trips V8's
+  // max string length on the GH Actions runner. Stream line-by-line.
+  const rl = createInterface({
+    input: createReadStream(csvCache, { encoding: 'utf8' }),
+    crlfDelay: Infinity,
+  });
+
+  let header: string[] | null = null;
+  let iDay = -1,
+    iId = -1,
+    iProd = -1,
+    iLine = -1,
+    iCancel = -1,
+    iBpuic = -1,
+    iSchedArr = -1,
+    iActArr = -1,
+    iActArrStatus = -1,
+    iSchedDep = -1,
+    iActDep = -1,
+    iActDepStatus = -1;
 
   const journeys = new Map<string, Journey>();
   const operatingDayDots = date.split('-').reverse().join('.'); // DD.MM.YYYY
@@ -202,9 +203,29 @@ async function buildDay(date: string, urlOverride?: string) {
   let skippedDay = 0;
   let skippedStation = 0;
 
-  for (let li = 1; li < lines.length; li++) {
-    const line = lines[li];
+  for await (const line of rl) {
     if (!line) continue;
+    if (header === null) {
+      header = line.split(';');
+      const col = (name: string) => {
+        const i = header!.indexOf(name);
+        if (i < 0) throw new Error(`Missing column ${name} in header`);
+        return i;
+      };
+      iDay = col('BETRIEBSTAG');
+      iId = col('FAHRT_BEZEICHNER');
+      iProd = col('PRODUKT_ID');
+      iLine = col('LINIEN_TEXT');
+      iCancel = col('FAELLT_AUS_TF');
+      iBpuic = col('BPUIC');
+      iSchedArr = col('ANKUNFTSZEIT');
+      iActArr = col('AN_PROGNOSE');
+      iActArrStatus = col('AN_PROGNOSE_STATUS');
+      iSchedDep = col('ABFAHRTSZEIT');
+      iActDep = col('AB_PROGNOSE');
+      iActDepStatus = col('AB_PROGNOSE_STATUS');
+      continue;
+    }
     const f = line.split(';');
     if (f.length < header.length) continue;
     if (f[iDay] !== operatingDayDots) {
@@ -251,6 +272,10 @@ async function buildDay(date: string, urlOverride?: string) {
     }
     j.stops.push(stop);
     kept++;
+  }
+
+  if (header === null) {
+    throw new Error('CSV had no header row');
   }
 
   // Sort stops within each journey by scheduled time and drop singletons.
