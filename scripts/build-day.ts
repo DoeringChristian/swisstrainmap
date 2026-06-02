@@ -23,9 +23,10 @@ const OUT = resolve(ROOT, 'public', 'day.json');
 
 const ISTDATEN_DATASET_URL =
   'https://data.opentransportdata.swiss/dataset/istdaten';
-const STATIONS_URL =
-  'https://data.sbb.ch/api/explore/v2.1/catalog/datasets/dienststellen-gemass-opentransportdataswiss/exports/json' +
-  '?limit=-1&select=number,geopos,isocountrycode&where=isocountrycode%20%3D%20%22CH%22';
+/** Baked-in station list (BPUIC → [lon, lat]) checked into the repo so CI
+ *  doesn't depend on data.sbb.ch availability. Regenerate with
+ *  `npm run update-stations`. */
+const STATIONS_FILE = resolve(__dirname, '..', 'data', 'stations.json');
 
 type StopEvent = {
   /** scheduled arrival, minutes since midnight on operating day; null if first stop */
@@ -72,14 +73,28 @@ async function ensureDir(path: string) {
 
 async function download(url: string, dest: string): Promise<void> {
   console.log(`  → ${url}`);
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'swiss-train-delay-map prep-script' },
-    redirect: 'follow',
-  });
-  if (!res.ok || !res.body) {
-    throw new Error(`HTTP ${res.status} ${res.statusText} for ${url}`);
+  const tries = 4;
+  for (let attempt = 1; attempt <= tries; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'swiss-train-delay-map prep-script' },
+        redirect: 'follow',
+      });
+      if (!res.ok || !res.body) {
+        throw new Error(`HTTP ${res.status} ${res.statusText} for ${url}`);
+      }
+      await pipeline(
+        Readable.fromWeb(res.body as never),
+        createWriteStream(dest),
+      );
+      return;
+    } catch (err) {
+      if (attempt === tries) throw err;
+      const wait = 1500 * attempt;
+      console.log(`    attempt ${attempt} failed (${(err as Error).message}); retrying in ${wait}ms…`);
+      await new Promise((r) => setTimeout(r, wait));
+    }
   }
-  await pipeline(Readable.fromWeb(res.body as never), createWriteStream(dest));
 }
 
 /**
@@ -135,22 +150,19 @@ async function findLatestDate(): Promise<{ date: string; url: string }> {
 }
 
 async function loadStations(): Promise<Map<number, [number, number]>> {
-  const cached = resolve(CACHE_DIR, 'stations.json');
-  if (!existsSync(cached)) {
-    console.log('Downloading Swiss service-point list…');
-    await download(STATIONS_URL, cached);
-  } else {
-    console.log('Using cached station list.');
+  if (!existsSync(STATIONS_FILE)) {
+    throw new Error(
+      `Missing ${STATIONS_FILE}. Run 'npm run update-stations' to regenerate it.`,
+    );
   }
-  type Row = {
-    number: number;
-    geopos: { lon: number; lat: number } | null;
-  };
-  const rows: Row[] = JSON.parse(await readFile(cached, 'utf8'));
+  const obj: Record<string, [number, number]> = JSON.parse(
+    await readFile(STATIONS_FILE, 'utf8'),
+  );
   const map = new Map<number, [number, number]>();
-  for (const r of rows) {
-    if (r.geopos && Number.isFinite(r.number)) {
-      map.set(r.number, [r.geopos.lon, r.geopos.lat]);
+  for (const [k, v] of Object.entries(obj)) {
+    const n = Number(k);
+    if (Number.isFinite(n)) {
+      map.set(n, v);
     }
   }
   console.log(`  ${map.size} stations with coordinates.`);
